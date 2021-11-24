@@ -2,24 +2,22 @@ package service
 
 import (
 	"fmt"
+	"sync"
+
 	"github.com/arpanetus/counter/pkg/ds"
 	"github.com/arpanetus/counter/pkg/file"
-	"sync"
 )
 
 type Counter struct {
 	mutex  sync.Mutex
-	path   string
 	worker file.CounterFileWorker
 	buffer ds.RingBufferer
 }
 
 func New(
-	path string,
 	worker file.CounterFileWorker,
 ) *Counter {
 	return &Counter{
-		path:   path,
 		worker: worker,
 	}
 }
@@ -28,9 +26,9 @@ func (c *Counter) Parse() error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	b, err := c.worker.Read(c.path)
+	b, err := c.worker.Read()
 	if err != nil {
-		return fmt.Errorf("cannot parse from file {%s} with err: %w", c.path, err)
+		return fmt.Errorf("cannot parse from file: %w", err)
 	}
 
 	c.buffer = b
@@ -56,13 +54,13 @@ func (c *Counter) Write() error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	if err := c.worker.Write(c.path, c.buffer); err != nil {
-		return fmt.Errorf("cannot write buffer into file {%s} with err", c.path, err)
+	if err := c.worker.Write(c.buffer); err != nil {
+		return fmt.Errorf("cannot write buffer into file: %w", err)
 	}
 
 	return nil
 }
 
 func (c *Counter) Close() error {
-	return c.Write()
+	return c.worker.Close()
 }

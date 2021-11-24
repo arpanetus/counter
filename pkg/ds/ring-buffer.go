@@ -7,29 +7,14 @@ import (
 
 var ErrEmptyRingBuffer = errors.New("ring buffer is empty")
 
-type RingBufferNode struct {
-	stamp time.Time
-	next  *RingBufferNode
-}
-
-func (n *RingBufferNode) Stamp() time.Time {
-	return n.stamp
-}
-
 type RingBuffer struct {
-	duration  time.Duration
-	startNode *RingBufferNode
-	lastNode  *RingBufferNode
+	duration time.Duration
+	els      map[int64]struct{}
 }
 
-func emptyRingBufferNode() *RingBufferNode {
-	return &RingBufferNode{stamp: time.Time{}, next: nil}
-}
-
-// New inits *RingBuffer with given the duration and zero-value *RingBuffer as the startNode and lastNode.
+// New inits *RingBuffer with given the duration.
 func New(duration time.Duration) *RingBuffer {
-	node := emptyRingBufferNode()
-	return &RingBuffer{duration: duration, startNode: node, lastNode: node}
+	return &RingBuffer{duration: duration, els: make(map[int64]struct{})}
 }
 
 // AddNow adds current time for a ring.
@@ -38,91 +23,31 @@ func (r *RingBuffer) AddNow() {
 }
 
 // Sum counts all stamps within RingBuffer's time.Duration,
-// and updates as soon as it meets the old stamp.
-func (r *RingBuffer) Sum() (cnt uint64) {
-	node := r.startNode
-	moved := false
+// and remove the old stamp as soon as it meets it.
+func (r *RingBuffer) Sum() (count uint64) {
+	now, toRemove := time.Now(), make([]int64, 0)
 
-	for node != nil {
-		if node.stamp.Sub(time.Now()) <= r.duration {
-			if !moved {
-				r.startNode = node
-				moved = true
-			}
-			cnt += 1
-		}
-		node = node.next
-	}
-
-	return cnt
-}
-
-func (r *RingBuffer) Last() *RingBufferNode {
-	switch {
-	case r.lastNode != nil:
-		return r.lastNode
-	case r.startNode != nil && r.lastNode == nil:
-		node := r.startNode
-		for node.next != nil {
-			return node
-		}
-	default:
-		return nil
-	}
-	return nil
-}
-
-// Add add the timestamp into *RingBuffer.
-func (r *RingBuffer) Add(stamp time.Time) {
-	now := &RingBufferNode{stamp: stamp, next: nil}
-	switch {
-	case r.startNode == nil && r.lastNode == nil:
-		r.startNode, r.lastNode = now, now
-	case r.startNode == nil && r.lastNode != nil:
-		r.startNode = r.lastNode
-		r.lastNode.next = now
-		r.lastNode = r.lastNode.next
-	case r.startNode != nil && r.lastNode == nil:
-		lastNode := r.Last()
-		if lastNode == nil {
-			r.startNode, r.lastNode = now, now
+	for stamp := range r.els {
+		if now.Sub(time.Unix(0, stamp)) > r.duration {
+			toRemove = append(toRemove, stamp)
 		} else {
-			r.lastNode = lastNode
-			r.lastNode.next = now
-			r.lastNode = r.lastNode.next
+			count++
 		}
-	default:
-		r.lastNode.next = now
-		r.lastNode = r.lastNode.next
-	}
-}
-
-type RingBufferIterator struct {
-	node  *RingBufferNode
-	moved bool
-}
-
-func (r *RingBuffer) Iterator() *RingBufferIterator {
-	return &RingBufferIterator{
-		node:  r.startNode,
-		moved: false,
-	}
-}
-
-func (i *RingBufferIterator) Next() bool {
-	if !i.moved {
-		i.moved = true
-
-		return true
 	}
 
-	if i.node == nil {
-		return false
+	for _, v := range toRemove {
+		delete(r.els, v)
 	}
 
-	return true
+	return count
 }
 
-func (i *RingBufferIterator) Value() *RingBufferNode {
-	return i.node
+// Stamps returns the underlying map.
+func (r *RingBuffer) Stamps() map[int64]struct{} {
+	return r.els
+}
+
+// Add adds the timestamp into *RingBuffer.
+func (r *RingBuffer) Add(stamp time.Time) {
+	r.els[stamp.UnixNano()] = struct{}{}
 }

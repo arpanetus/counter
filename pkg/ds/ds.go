@@ -2,19 +2,12 @@ package ds
 
 import "time"
 
-type RingBufferNoder interface {
-	Stamp() time.Time
-}
-
+// RingBufferer is the interface which is made for file worker.
+// In fact, the prior implementation was a linked-list as a Ring Buffer.
+// The better implementation would be a heap.
 type RingBufferer interface {
 	AddNow()
-	Sum() (cnt uint64)
-	Last() *RingBufferNode
+	Sum() (count uint64)
 	Add(stamp time.Time)
-	Iterator() *RingBufferIterator
-}
-
-type RingBufferIterable interface {
-	Next() bool
-	Value() *RingBufferNode
+	Stamps() map[int64]struct{}
 }
